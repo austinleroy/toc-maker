@@ -12,7 +12,6 @@ pub type TocDirectorySyncRef = Arc<RwLock<TocDirectory>>;
 pub type TocFileSyncRef = Arc<RwLock<TocFile>>;
 
 pub const SUITABLE_FILE_EXTENSIONS: &'static [&'static str] = ["uasset", "ubulk", "uptnl", "umap"].as_slice();
-pub const GAME_ROOT: &'static str = "Game";
 
 pub struct AssetCollector
 {
@@ -40,6 +39,10 @@ impl AssetCollector
 
     pub fn get_toc_tree(self) -> TocDirectorySyncRef {
         self.root_dir
+    }
+
+    pub fn print_stats(&self) {
+        self.profiler.print();
     }
 
     fn add_folder(os_folder_path: &PathBuf, toc_folder_path: &TocDirectorySyncRef, mut profiler: &mut AssetCollectorProfiler, first: bool) {

@@ -5,7 +5,7 @@ use byteorder::NativeEndian;
 
 use crate::{
     asset_collector::{
-        self, AssetCollector, TocDirectory, TocDirectorySyncRef, TocFile, TocFileSyncRef, GAME_ROOT, SUITABLE_FILE_EXTENSIONS}, helpers::{AlignableNum, AlignableStream}, io_package::{
+        self, AssetCollector, TocDirectory, TocDirectorySyncRef, TocFile, TocFileSyncRef, SUITABLE_FILE_EXTENSIONS}, helpers::{AlignableNum, AlignableStream}, io_package::{
         ContainerHeaderPackage,
         ExportBundle, ExportBundleHeader4,
         PackageIoSummaryDeserialize, 
@@ -170,42 +170,46 @@ impl TocFactory {
     pub fn write_files<WTOC: Write, WCAS: AlignableStream>(self, mut utoc_stream: &mut WTOC, mut ucas_stream: &mut WCAS) -> Result<(), &'static str> {
         type EN = byteorder::NativeEndian;
         let asset_collector = AssetCollector::from_folder(&self.source_folder)?;
+        asset_collector.print_stats();
+        let mut profiler = TocBuilderProfiler::new();
         let (
             directories,
-            mut files,
+            files,
             names
         ) = TocFlattener::flatten(asset_collector.get_toc_tree());
+        profiler.set_flatten_time();
 
         //TODO move mount point and set toc_name_hash
         //TODO also remove meta hashes?  Since they don't seem to be needed
-        //TODO remove?  Doesn't seem like this helps... was working on this for ubulks since they seem to have issues
-        files.sort_by(|a,b| {
-            let apar: String = a.os_path.split('/').rev().skip(1).collect();
-            let bpar: String = b.os_path.split('/').rev().skip(1).collect();
-            let pord = apar.cmp(&bpar);
-            if a.os_path.ends_with(".ubulk") {
-                if b.os_path.ends_with(".ubulk") {
-                    if matches!(pord, Ordering::Equal) {
-                        a.file_size.cmp(&b.file_size)
-                    } else {
-                        pord
-                    }
-                } else {
-                    Ordering::Greater
-                }
-            } else if b.os_path.ends_with(".ubulk") {
-                Ordering::Less
-            } else {
-                if matches!(pord, Ordering::Equal) {
-                    a.file_size.cmp(&b.file_size)
-                } else {
-                    pord
-                }
-            }
-        });
-        for i in 0..files.len() {
-            files[i].user_data = i as u32;
-        }
+
+        // This sorting seemed close to how files were sorted in my test case... useful for file comparisons
+        // files.sort_by(|a,b| {
+        //     let apar: String = a.os_path.split('/').rev().skip(1).collect();
+        //     let bpar: String = b.os_path.split('/').rev().skip(1).collect();
+        //     let pord = apar.cmp(&bpar);
+        //     if a.os_path.ends_with(".ubulk") {
+        //         if b.os_path.ends_with(".ubulk") {
+        //             if matches!(pord, Ordering::Equal) {
+        //                 a.file_size.cmp(&b.file_size)
+        //             } else {
+        //                 pord
+        //             }
+        //         } else {
+        //             Ordering::Greater
+        //         }
+        //     } else if b.os_path.ends_with(".ubulk") {
+        //         Ordering::Less
+        //     } else {
+        //         if matches!(pord, Ordering::Equal) {
+        //             a.file_size.cmp(&b.file_size)
+        //         } else {
+        //             pord
+        //         }
+        //     }
+        // });
+        // for i in 0..files.len() {
+        //     files[i].user_data = i as u32;
+        // }
 
 
         let toc_name_hash = Hasher16::get_cityhash64("pakchunk999"); // This can be anything - in UE4.27, this is the pakchunk number, e.g. pakchunk120
@@ -230,19 +234,20 @@ impl TocFactory {
             let mut compressed_chunks = self.write_compressed_file(&file, &mut compressed_offset, ucas_stream);
             compression_blocks.append(&mut compressed_chunks);
 
-            if file.chunk_id.get_type() == IoChunkType4::ExportBundleData {
-                let os_file = File::open(&file.os_path).unwrap(); // Export Bundles (.uasset) have store entry data written
-                let mut file_reader = BufReader::with_capacity(Self::FILE_SUMMARY_READER_ALLOC, os_file);
-                container_header.packages.push(ContainerHeaderPackage::from_package_summary::<
-                    ExportBundleHeader4, PackageSummary2, BufReader<File>, EN
-                >(
-                    &mut file_reader, file.chunk_id.get_raw_hash(), 
-                    file.file_size, &file.os_path
-                ));
-            }
+            // Seems like everything was still loading fine even without the header packages here?
+            // if file.chunk_id.get_type() == IoChunkType4::ExportBundleData {
+            //     let os_file = File::open(&file.os_path).unwrap(); // Export Bundles (.uasset) have store entry data written
+            //     let mut file_reader = BufReader::with_capacity(Self::FILE_SUMMARY_READER_ALLOC, os_file);
+            //     container_header.packages.push(ContainerHeaderPackage::from_package_summary::<
+            //         ExportBundleHeader4, PackageSummary2, BufReader<File>, EN
+            //     >(
+            //         &mut file_reader, file.chunk_id.get_raw_hash(), 
+            //         file.file_size, &file.os_path
+            //     ));
+            // }
 
-            //self.metas.push(IoStoreTocEntryMeta::new_empty()); // Generate meta - SHA1 hash of the file's contents (doesn't seem to be required)
-            metas.push(IoStoreTocEntryMeta::new_with_hash(&mut File::open(Path::new(&file.os_path)).unwrap()));
+            metas.push(IoStoreTocEntryMeta::new_empty()); // Empty meta seems to work okay
+            //metas.push(IoStoreTocEntryMeta::new_with_hash(&mut File::open(Path::new(&file.os_path)).unwrap())); // Generate meta - SHA1 hash of the file's contents (doesn't seem to be required)
         }
 
         //Container header is last thing to write to file
@@ -252,8 +257,8 @@ impl TocFactory {
         ucas_stream.write(&container_header);
         compression_blocks.push(IoStoreTocCompressedBlockEntry::new(compressed_offset, container_header.len() as u32, container_header.len() as u32));
 
-        //self.metas.push(IoStoreTocEntryMeta::new_empty());
-        metas.push(IoStoreTocEntryMeta::new_with_hash(&mut Cursor::new(container_header)));
+        metas.push(IoStoreTocEntryMeta::new_empty()); // Empty meta seems to work okay
+        //metas.push(IoStoreTocEntryMeta::new_with_hash(&mut Cursor::new(container_header))); // Generate meta - SHA1 hash of the file's contents (doesn't seem to be required)
 
 
 
@@ -286,6 +291,9 @@ impl TocFactory {
         IoStringPool::list_to_buffer::                  <WTOC, EN>(&names, &mut utoc_stream).unwrap(); // FIoStringIndexEntry
         IoStoreTocEntryMeta::list_to_buffer::           <WTOC, EN>(&metas, &mut utoc_stream).unwrap(); // FIoStoreTocEntryMeta
 
+        profiler.set_serialize_time();
+        profiler.display_results();
+
         Ok(())
     }
 
@@ -310,26 +318,10 @@ impl TocFactory {
 
         gen_blocks
     }
-
-    pub const FILE_SUMMARY_READER_ALLOC: usize = 0x2000;
 }
 
 // TODO: Set the mount point further up in mods where the file structure doesn't diverge at root
 
-
-pub struct ContainerData {
-    pub header: Vec<u8>,
-    pub virtual_blocks: Vec<PartitionBlock>,
-    pub files: Vec<String>
-}
-
-#[repr(C)]
-pub struct PartitionBlock {
-    //os_path: *const u8, // 0x0
-    pub os_path: usize, // 0x0 (pointers don't implement Send or Sync)
-    pub start: u64, // 0x8
-    pub length: u64, // 0x10
-}
 
 pub struct TocBuilderProfiler {
     // All file sizes are in bytes
