@@ -1,0 +1,58 @@
+ucas is basically just concatenated uasset files with alignment
+to compression block sizing
+
+utoc is a header file that points to ucas - holds useful info on
+file paths, directories, compression config, sizes, etc.
+
+utoc always seems to have an extra compression block at the end...?
+need to see why this is.  Adding blank data to the end of the ucas
+file seems to work okay so that the app doesn't crash at least.
+
+
+Do I need to worry about .pak file generation here?  Thinking it
+might have an archive size attribute or something I need to set.
+
+
+
+
+Yuk shine    cc 94 c1 ac a3 b1 11 d2
+Yuk mska     4e f1 1a da 34 a8 ff 50
+yuk msb      ec 7d 6a 88 d0 91 f4 a9
+yuk col      fc 5e 1e 27 36 7d 4a 20
+yuk skel     98 15 43 cc 9f 80 2c 54
+
+
+
+testout
+... 5 other assets
+yuk mkb (bulk)
+yuk shine (uasset)
+yuk skel (uasset)
+yuk shine (bulk)
+yuk shine
+yuk col (uasset)
+yuk mskb (uasset)
+yuk col (bulk)
+yuk mska (uasset)
+yuk mska (bulk)
+
+
+
+textures
+
+yuk pos a       05 51 f4 62 e9 4c 5f 85
+mits pos a      11 71 b5 9b 0a 26 3d 95
+yuk pose b      e6 e7 b4 df 5d d8 80 0c
+fuuk pose a     7d 86 99 92 7a f7 e6 d2
+fuk pose b      d4 2d 92 7d ed df 35 c2
+
+then container chunk
+... then 9 bulk files
+
+
+testout
+yuk pos b       2c 88 8a 7d b5 53 55 18
+yuk pos a       00 4a 7e 21 be 26 b2 2c
+fuk pose a      8b 68 fb af 6e 4f 3e d8
+fuk pos b       a4 03 ea 84 81 97 24 2f
+mits pos a      7a 97 7c 51 e6 6c da e6

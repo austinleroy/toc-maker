@@ -1,0 +1,161 @@
+container header signature: 1232028526
+
+2 chunks: 
+   - offset 0
+     length 4195355
+   - offset 4259840
+     length 84
+
+65 compression blocks
+
+
+
+
+
+
+
+
+diffs...
+
+directory index size (makes sense)
+
+containerId (not sure what this is?)
+   ue containerId: 2c c7 ff 98 dc d9 6f 78
+
+chunkids (each id is 12 bytes)
+
+... lots the same here ...
+
+next bad block starts at 3C8 (968 decimal)
+
+^looks like this is the last compression block entry
+size & compression match up, offset is different.  
+   rust created offset - 400800 (decimal 4196352)
+   ue created offset   - 400420 (decimal 4195360)
+
+
+Next diff is directory index.  Need to find code to deserialize directory index buffer.
+
+diffs:
+mount point (obviously)
+directory entries (again, obviously)
+
+format
+uint name
+uint firstchild
+uint nextsibling
+uint firstfile
+
+   ue created:
+      ffffffff
+      ffffffff
+      ffffffff
+      00000000
+
+   rust created:
+      ffffffff
+      01000000
+      ffffffff
+      ffffffff
+
+      00000000
+      02000000
+      ffffffff
+      ffffffff
+      
+      01000000
+      03000000
+      ffffffff
+      ffffffff
+
+      02000000
+      04000000
+      ffffffff
+      ffffffff
+      
+      03000000
+      05000000
+      ffffffff
+      ffffffff
+
+      04000000
+      06000000
+      ffffffff
+      ffffffff
+  
+      05000000
+      07000000
+      ffffffff
+      ffffffff
+
+      06000000
+      ffffffff
+      ffffffff
+      00000000
+
+file entries
+
+format
+uint name
+uint nextfile
+uint userdata
+
+   ue created:
+       00000000
+       ffffffff
+       00000000
+
+   rust created:
+       07000000
+       ffffffff
+       00000000
+
+string table:
+
+   ue: 1 entry
+   rust: 8 entries
+order seems to be directory then file order.  Seems okay.
+
+*** FIXED META AT END OF FILE ***
+more diffs at end in what looks like FIoStoreTocEntryMeta?  
+
+looks like the "Metas" are chunk hashes.
+
+
+Springs file io:
+
+00  Characters
+01  Player
+02  PC0002
+03  Models
+04  T_PC0002 Shc.uasset
+05  PC02 MKa  uasset
+06  PC02 MkB  uasset
+07  PC02 Col  uasset
+08  SK PC02   uasset
+09  PC0005
+0a  PC05 Mkb  uasset
+0b  PC05 Mka  uasset
+0c  PC05 Shc  uasset
+0d  PC05 Col  uasset
+0e  SK PC05   uasset
+0f  PC0006
+10  PC06 Col  uasset
+11  SK PC06   uasset
+12  UI
+13  Bustup
+14  Textures
+15  BU PC02 PoseA uasset
+16  BU PC05 PoseA uasset
+17  BU PC02 PoseB uasset
+18  BU PC06 PoseA uasset
+19  BU PC06 PoseB uasset
+1a  PC02 Shc ubulk
+1b  PC02 Mka ubulk
+1c  PC02 Mkb ubulk
+1d  PC02 Col ubulk
+1e  PC05 Mkb ubulk
+1f  PC05 Mka ubulk
+20  PC05 Shc ubulk
+21  PC05 Col ubulk
+22  PC06 Col ubulk
