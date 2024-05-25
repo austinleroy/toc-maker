@@ -14,7 +14,7 @@ use crate::{
     }, metadata::{UtocMetadata, UTOC_METADATA}, string::{FString32NoHash, FStringSerializer, FStringSerializerExpectedLength, Hasher16, Hasher8}
 };
 
-pub const DEFAULT_COMPRESSION_BLOCK_ALIGNMENT: u32 = 0x800;
+pub const DEFAULT_COMPRESSION_BLOCK_ALIGNMENT: u32 = 0x10;
 
 struct TocFlattener {
     // Used to set the correct directory/file/string indices when flattening TocDirectory tree into Directory Index entries
@@ -180,16 +180,27 @@ impl TocFactory {
         //TODO also remove meta hashes?  Since they don't seem to be needed
         //TODO remove?  Doesn't seem like this helps... was working on this for ubulks since they seem to have issues
         files.sort_by(|a,b| {
+            let apar: String = a.os_path.split('/').rev().skip(1).collect();
+            let bpar: String = b.os_path.split('/').rev().skip(1).collect();
+            let pord = apar.cmp(&bpar);
             if a.os_path.ends_with(".ubulk") {
                 if b.os_path.ends_with(".ubulk") {
-                    a.os_path.cmp(&b.os_path)
+                    if matches!(pord, Ordering::Equal) {
+                        a.file_size.cmp(&b.file_size)
+                    } else {
+                        pord
+                    }
                 } else {
                     Ordering::Greater
                 }
             } else if b.os_path.ends_with(".ubulk") {
                 Ordering::Less
             } else {
-                a.os_path.cmp(&b.os_path)
+                if matches!(pord, Ordering::Equal) {
+                    a.file_size.cmp(&b.file_size)
+                } else {
+                    pord
+                }
             }
         });
         for i in 0..files.len() {
@@ -294,7 +305,7 @@ impl TocFactory {
 
             destination.align_to(offset, self.compression_block_alignment);
             gen_blocks.push(IoStoreTocCompressedBlockEntry::new(*offset, len as u32, compressed_len as u32));
-            *offset += destination.write(&data).unwrap() as u64;
+            *offset += destination.write(&data[..len]).unwrap() as u64;
         }
 
         gen_blocks
