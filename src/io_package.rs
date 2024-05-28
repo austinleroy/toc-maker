@@ -9,17 +9,11 @@ type ExportFilterFlags = u8; // and this one too...
 // Data: contents of .uexp - 4 magic bytes at end
 // Texture Bulk: all of .ubulk
 
-use byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
-use crate::{
-    metadata::{UtocMetadata, UtocMetaImportType},
-    string::{ FMappedName, FStringDeserializerText, FString16, Hasher16 },
-};
+use byteorder::{ReadBytesExt, WriteBytesExt};
+use crate::string::{ FMappedName, FStringDeserializerText, FString16, Hasher16 };
 use std::{
     error::Error,
-    fs::File,
-    fmt,
-    io::{BufReader, Cursor, ErrorKind, Read, Seek, SeekFrom, Write},
-    sync::MutexGuard
+    io::{Read, Seek, SeekFrom, Write},
 };
 // IoStoreObjectIndex is a 64 bit value consisting of a hash of a target string for the lower 62 bits and an object type for the highest 2
 // expect for Empty which represents a null value and Export which contains an index to another item on the export tree
@@ -432,14 +426,7 @@ impl ContainerHeaderPackage {
         }
         import_ids
     }
-    // If required, import ids can be manually specified from the metadata file. Trying to generate a
-    // UCAS file with no external metadata was always going to be a challenge
-    fn import_from_metadata_file(meta: &UtocMetadata, hash: u64) -> Vec<u64> {
-        match meta.get_manual_import(hash) {
-            Some(n) => n.clone(),
-            None => vec![]
-        }
-    }
+
     // Parse the package file to extract the values needed to build a store entry in the container header
     pub fn from_package_summary<
         TExportBundle: ExportBundle,
@@ -607,11 +594,7 @@ mod tests {
         io::BufReader,
         path::PathBuf
     };
-    use byteorder::NativeEndian;
-    use crate::{
-        io_package::{ ContainerHeaderPackage, ExportBundleHeader4, PackageSummary2 },
-        platform::Metadata
-    };
+    use crate::platform::Metadata;
 
     fn get_export_counts_for_asset(path: &str) {
         let os_file = File::open(path).unwrap();

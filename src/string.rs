@@ -1,8 +1,7 @@
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use std::{
     error::Error,
-    fmt,
-    io::{Cursor, Read, Write, Seek, SeekFrom}
+    io::{Read, Write, Seek, SeekFrom}
 };
 
 // Serialized versions of Unreal Engine's FString type. Mostly used as an intermediate between bytes and a full string
@@ -42,8 +41,9 @@ pub trait FStringSerializerBlockAlign {
     // IO Store packages add padding bytes between strings and hashes to ensure all hashes are aligned
     fn get_block_alignment() -> u64;
     #[inline]
-    fn to_buffer_alignment<W: Write + Seek, E: byteorder::ByteOrder>(writer: &mut W) {
-        to_buffer_alignment_super::<Self, W, E>(writer);
+    fn to_buffer_alignment<W: Write + Seek, E: byteorder::ByteOrder>(writer: &mut W) -> Result<(), Box<dyn Error>> {
+        to_buffer_alignment_super::<Self, W, E>(writer)?;
+        Ok(())
     }
 }
 pub trait FStringSerializerExpectedLength {
@@ -58,13 +58,14 @@ fn to_buffer_alignment_super<
         T: FStringSerializerBlockAlign + ?Sized, 
         W: Write + Seek, 
         E: byteorder::ByteOrder
-    >(writer: &mut W) {
+    >(writer: &mut W) -> Result<(), Box<dyn Error>> {
     let align = writer.stream_position().unwrap() % T::get_block_alignment();
     if align == 0 {
-        return;
+        return Ok(());
     }
     let diff = T::get_block_alignment() - align;
-    writer.seek(SeekFrom::Current(diff as i64));
+    writer.seek(SeekFrom::Current(diff as i64))?;
+    Ok(())
 }
 
 pub const NAME_HASH_ALGORITHM: u64 = 0xC1640000; // FNameHash::AlgorithmId
@@ -83,8 +84,8 @@ impl FString32NoHash {
             return Ok(None); // we correctly parsed it, there's just nothing there lol
         }
         let mut buf = vec![0; (len - 1) as usize]; // get rid of that pesky \0
-        reader.read_exact(&mut buf);
-        reader.seek(SeekFrom::Current(1));
+        reader.read_exact(&mut buf)?;
+        reader.seek(SeekFrom::Current(1))?;
         Ok(Some(unsafe { String::from_utf8_unchecked(buf)}))
     }
 
@@ -92,7 +93,7 @@ impl FString32NoHash {
         // add an extra byte for null terminator
         let len = (rstr.len() + if !rstr.ends_with("\0") { 1 } else { 0 }) as u32;
         writer.write_u32::<E>(len)?;
-        writer.write_all(rstr.as_bytes());
+        writer.write_all(rstr.as_bytes())?;
         if !rstr.ends_with("\0") {
             writer.write_u8(b'\0')?;
         }
@@ -143,7 +144,7 @@ impl FStringDeserializer for FString32 {
 }
 
 impl FStringSerializer for FString32 {
-    fn to_buffer<W: Write, E: byteorder::ByteOrder>(rstr: &str, writer: &mut W) -> Result<(), Box<dyn Error>> {
+    fn to_buffer<W: Write, E: byteorder::ByteOrder>(_rstr: &str, _writer: &mut W) -> Result<(), Box<dyn Error>> {
         todo!("Wake me up when I need to figure out FString32's hash");
     }
 }
@@ -157,17 +158,13 @@ pub struct FString16;
     // 0x2 + len:   hash: u64 (cityhash64 of data.to_lowercase())
 
 impl FString16 {
-    pub fn check_hash(rstr: &str) -> u64 {
-        Hasher8::get_cityhash64(rstr)
-    }
-
     fn to_buffer_text_inner<W: Write, E: byteorder::ByteOrder>(rstr: &str, writer: &mut W) -> Result<(), Box<dyn Error>> {
         writer.write_u16::<byteorder::BigEndian>(rstr.len().try_into()?)?; // length
-        writer.write_all(rstr.as_bytes());
+        writer.write_all(rstr.as_bytes())?;
         Ok(())
     }
     fn to_buffer_hash_inner<W: Write, E: byteorder::ByteOrder>(rstr: &str, writer: &mut W) -> Result<(), Box<dyn Error>> {
-        writer.write_u64::<E>(Hasher8::get_cityhash64(&rstr));
+        writer.write_u64::<E>(Hasher8::get_cityhash64(&rstr))?;
         Ok(())
     }
 }
@@ -189,7 +186,7 @@ impl FStringDeserializerText for FString16 {
             reader.read_u8()?; // align to nearest 0x2 if wide
         }
         let mut buf: Vec<u8> = vec![0; if b_is_wide { 2 * len } else { len } as usize];
-        reader.read_exact(&mut buf);
+        reader.read_exact(&mut buf)?;
         Ok(Some(unsafe { 
             if b_is_wide {
                 // Safety: length of buf was multiplied by 2 to read n u16s, dividing by 2 is just undoing that
@@ -203,20 +200,20 @@ impl FStringDeserializerText for FString16 {
 
 impl FStringSerializer for FString16 {
     fn to_buffer<W: Write, E: byteorder::ByteOrder>(rstr: &str, writer: &mut W) -> Result<(), Box<dyn Error>> {
-        FString16::to_buffer_text_inner::<W, E>(rstr, writer);
-        FString16::to_buffer_hash_inner::<W, E>(rstr, writer);
+        FString16::to_buffer_text_inner::<W, E>(rstr, writer)?;
+        FString16::to_buffer_hash_inner::<W, E>(rstr, writer)?;
         Ok(())
     }
 }
 impl FStringSerializerText for FString16 {
     fn to_buffer_text<W: Write, E: byteorder::ByteOrder>(rstr: &str, writer: &mut W) -> Result<(), Box<dyn Error>> {
-        FString16::to_buffer_text_inner::<W, E>(rstr, writer);
+        FString16::to_buffer_text_inner::<W, E>(rstr, writer)?;
         Ok(())
     }
 }
 impl FStringSerializerHash for FString16 {
     fn to_buffer_hash<W: Write, E: byteorder::ByteOrder>(rstr: &str, writer: &mut W) -> Result<(), Box<dyn Error>> {
-        FString16::to_buffer_hash_inner::<W, E>(rstr, writer);
+        FString16::to_buffer_hash_inner::<W, E>(rstr, writer)?;
         Ok(())
     }
 }
@@ -224,9 +221,10 @@ impl FStringSerializerBlockAlign for FString16 {
     fn get_block_alignment() -> u64 {
         8
     }
-    fn to_buffer_alignment<W: Write + Seek, E: byteorder::ByteOrder>(writer: &mut W) {
-        to_buffer_alignment_super::<Self, W, E>(writer);
-        writer.write_u64::<E>(NAME_HASH_ALGORITHM);
+    fn to_buffer_alignment<W: Write + Seek, E: byteorder::ByteOrder>(writer: &mut W) -> Result<(), Box<dyn Error>> {
+        to_buffer_alignment_super::<Self, W, E>(writer)?;
+        writer.write_u64::<E>(NAME_HASH_ALGORITHM)?;
+        Ok(())
     }
 }
 

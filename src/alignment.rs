@@ -17,10 +17,10 @@ impl AlignableNum for u64 {}
 impl AlignableNum for u128 {}
 
 pub trait AlignableStream: Write {
-    fn align_to<O: AlignableNum + TryInto<usize>, T: Unsigned + Into<O>>(&mut self, current_offset: &mut O, alignment_size: T) -> O {
-        let next_alignment = current_offset.align_to(alignment_size);
-        if next_alignment != *current_offset {
-            match (next_alignment - *current_offset).try_into() {
+    fn align_to<O: AlignableNum + TryInto<usize>, T: Unsigned + Into<O>>(&mut self, absolute_offset: &mut O, alignment_size: T) -> O {
+        let next_alignment = absolute_offset.align_to(alignment_size);
+        if next_alignment != *absolute_offset {
+            match (next_alignment - *absolute_offset).try_into() {
                 Ok(s) => {
                     let blank: Vec<u8> = iter::repeat(0).take(s).collect();
                     self.write(&blank).unwrap();
@@ -28,8 +28,8 @@ pub trait AlignableStream: Write {
                 Err(_) => panic!("Oversized alignment difference!!")
             }
         }
-        *current_offset = next_alignment;
-        *current_offset
+        *absolute_offset = next_alignment;
+        *absolute_offset
     }
 }
 

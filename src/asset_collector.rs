@@ -27,7 +27,7 @@ impl AssetCollector
             let mut profiler = AssetCollectorProfiler::new(path.to_string());
             
             let path: PathBuf = PathBuf::from(path);
-            AssetCollector::add_folder(&path, &root_dir, &mut profiler, true);
+            AssetCollector::add_folder(&path, &root_dir, &mut profiler);
             Ok(Self {
                 root_dir,
                 profiler,
@@ -45,25 +45,18 @@ impl AssetCollector
         self.profiler.print();
     }
 
-    fn add_folder(os_folder_path: &PathBuf, toc_folder_path: &TocDirectorySyncRef, mut profiler: &mut AssetCollectorProfiler, first: bool) {
+    fn add_folder(os_folder_path: &PathBuf, toc_folder_path: &TocDirectorySyncRef, mut profiler: &mut AssetCollectorProfiler) {
         for file_entry in fs::read_dir(os_folder_path).unwrap() {
             match &file_entry {
                 Ok(fs_obj) => {
-                    let mut name = fs_obj.file_name().into_string().unwrap(); 
+                    let name = fs_obj.file_name().into_string().unwrap(); 
                     let file_type = fs_obj.file_type().unwrap();
                     if file_type.is_dir() {
                         let mut inner_path = PathBuf::from(os_folder_path);
                         inner_path.push(&name);
-                        // Set the root directory to Game if it isn't engine so people can use the game name (assuming only Engine and Game)
-                        // Commented out... I think the root directory should only be "Game" for the chunkid (that city64 hash)
-                        // if first && name != "Engine" {
-                        //     println!("Setting root directory {name} to {GAME_ROOT}");
-                        //     name = GAME_ROOT.to_string();
-                        // }
-                        // this is a new directory, create it and then check inside it
                         let mut new_dir = TocDirectory::new_rc(Some(name));
                         toc_folder_path.add_directory(new_dir.clone());
-                        AssetCollector::add_folder(&inner_path,&mut new_dir, &mut profiler, false);
+                        AssetCollector::add_folder(&inner_path,&mut new_dir, &mut profiler);
                         profiler.add_directory();
                     } else if file_type.is_file() {
                         let file_size = Metadata::get_object_size(fs_obj);
@@ -155,24 +148,6 @@ impl TocDirectory {
             self.first_file = Some(file.clone());
         }
         self.last_file = Arc::downgrade(&file);
-    }
-    
-    // get a child directory from a parent directory if it exists
-    pub fn get_child_dir(&self, seek_name: &str) -> Option<TocDirectorySyncRef> {
-        if self.has_children() {
-            let mut next_dir = self.first_child.clone();
-            while let Some(curr_dir) = next_dir {
-                if let Some(ref dir_name) = curr_dir.read().unwrap().name {
-                    if dir_name == seek_name {
-                        return Some(Arc::clone(&curr_dir));
-                    }
-                }
-                next_dir = curr_dir.read().unwrap().next_sibling.clone();
-            }
-            None
-        } else {
-            None
-        }
     }
 }
 
@@ -267,11 +242,6 @@ impl AssetCollectorProfiler {
         80
     }
 
-    fn print_centered(text: &str) {
-        let left_spaces = (AssetCollectorProfiler::get_terminal_length() - text.len()) / 2;
-        println!("{}{}", " ".repeat(left_spaces), text);
-    }
-
     pub fn print(&self) {
         println!("{}", "#".repeat(AssetCollectorProfiler::get_terminal_length()));
         println!("{}", self.os_path);
@@ -310,9 +280,5 @@ impl AssetCollectorProfiler {
     pub fn add_added_file(&mut self, size: u64) {
         self.added_files_count += 1;
         self.added_files_size += size;
-    }
-    pub fn add_replaced_file(&mut self, size: u64) {
-        self.replaced_files_count += 1;
-        self.replaced_files_size += size;
     }
 }

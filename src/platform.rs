@@ -19,6 +19,7 @@ impl Metadata {
     }
 
     #[cfg(target_os = "linux")]
+    #[allow(dead_code)]
     pub fn get_file_size(fs_obj: &File) -> u64 {
         let meta = fs_obj.metadata().unwrap();
         linux::fs::MetadataExt::st_size(&meta)

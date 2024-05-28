@@ -1,14 +1,8 @@
 use byteorder::{ReadBytesExt, WriteBytesExt};
-use num::traits::ToBytes;
-use crate::{
-    io_package::FGraphPackage,
-    string::{FString32NoHash, FStringSerializer, Hasher8, Hasher16},
-};
+use crate::string::{FString32NoHash, FStringSerializer, Hasher16};
 //#[cfg(feature = "hash_meta")]
 use sha1::{Sha1, Digest};
 use std::{
-    cmp::Ordering,
-    hash::{Hash, Hasher},
     error::Error,
     io::{Cursor, Read, Seek, SeekFrom, Write}
 };
@@ -121,18 +115,18 @@ impl IoStoreTocHeaderCommon for IoStoreTocHeaderType3 {
         writer.write_all(self.toc_magic.as_slice())?; // 0x0
         writer.write_u8(self.version.into())?;
         writer.write_u24::<E>(0)?; // padding
-        writer.write_u32::<E>(self.toc_header_size);
-        writer.write_u32::<E>(self.toc_entry_count);
-        writer.write_u32::<E>(self.toc_compressed_block_entry_count);
-        writer.write_u32::<E>(self.toc_compressed_block_entry_size);
-        writer.write_u32::<E>(self.compression_method_name_count);
-        writer.write_u32::<E>(self.compression_method_name_length);
-        writer.write_u32::<E>(self.compression_block_size);
-        writer.write_u32::<E>(self.directory_index_size);
-        writer.write_u32::<E>(self.partition_count);
-        writer.write_u64::<E>(self.container_id);
-        writer.write_u128::<E>(self.encryption_key_guid);
-        writer.write_u8(self.container_flags);
+        writer.write_u32::<E>(self.toc_header_size)?;
+        writer.write_u32::<E>(self.toc_entry_count)?;
+        writer.write_u32::<E>(self.toc_compressed_block_entry_count)?;
+        writer.write_u32::<E>(self.toc_compressed_block_entry_size)?;
+        writer.write_u32::<E>(self.compression_method_name_count)?;
+        writer.write_u32::<E>(self.compression_method_name_length)?;
+        writer.write_u32::<E>(self.compression_block_size)?;
+        writer.write_u32::<E>(self.directory_index_size)?;
+        writer.write_u32::<E>(self.partition_count)?;
+        writer.write_u64::<E>(self.container_id)?;
+        writer.write_u128::<E>(self.encryption_key_guid)?;
+        writer.write_u8(self.container_flags)?;
         writer.write_u24::<E>(0)?; // padding
         writer.write_u32::<E>(0)?; // padding
         writer.write_u64::<E>(self.partition_size)?;
@@ -259,21 +253,6 @@ impl From<IoChunkType5> for u8 {
     }
 }
 
-#[derive(Debug)]
-pub struct TocEntry { // For Unreal Engine 4.25
-    chunk_id: IoChunk1,
-    offset_length: IoOffsetAndLength
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Ord)]
-#[repr(C)]
-pub struct IoChunk1 { // For Unreal Engine 4.25
-    // data: [u8; 0xc]
-    global_package_id: u32,
-    chunk_index: u16,
-    obj_type: IoChunkType4
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Ord)]
 #[repr(C/* , align(4)*/)] // Unreal Engine 4.25+ onwards
 pub struct IoChunkId {
@@ -287,7 +266,6 @@ impl IoChunkId {
     pub fn new(path: &str, chunk_type: IoChunkType4) -> Self {
         let hash = Hasher16::get_cityhash64(path); // ChunkId
         let index = 0;
-        let pad = 0;
         let obj_type = chunk_type;
         Self { hash, index, obj_type }
     }
@@ -309,16 +287,11 @@ impl IoChunkId {
         }
         Ok(())
     }
-    pub fn get_raw_hash(&self) -> u64 {
-        self.hash
-    }
-    pub fn get_type(&self) -> IoChunkType4 {
-        self.obj_type
-    }
+    #[allow(dead_code)]
     pub fn from_buffer<R: Read + Seek, E: byteorder::ByteOrder>(reader: &mut R) -> Self {
         let hash = reader.read_u64::<E>().unwrap();
         let index = reader.read_u16::<E>().unwrap();
-        reader.seek(SeekFrom::Current(1));
+        reader.seek(SeekFrom::Current(1)).unwrap();
         let obj_type = IoChunkType4::from(reader.read_u8().unwrap());
         Self { hash, index, obj_type }
     }

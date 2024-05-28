@@ -1,17 +1,20 @@
 use std::{
-    any::Any, cell::RefCell, cmp::Ordering, error::Error, fs::{File, Metadata}, io::{self, BufRead, BufReader, Cursor, Read, Seek, SeekFrom, Write}, iter, mem, ops::Deref, path::{Path, PathBuf}, pin::Pin, sync::{Arc, Mutex, MutexGuard, RwLock, Weak}, time::Instant
+    fs::File, 
+    io::{Read, Write}, 
+    mem, 
+    ops::Deref, 
+    time::Instant
 };
-use byteorder::NativeEndian;
 
 use crate::{
     asset_collector::{
-        self, AssetCollector, TocDirectory, TocDirectorySyncRef, TocFile, TocFileSyncRef, SUITABLE_FILE_EXTENSIONS}, helpers::{AlignableNum, AlignableStream}, io_package::{
-        ContainerHeaderPackage,
-        ExportBundle, ExportBundleHeader4,
-        PackageIoSummaryDeserialize, 
-        PackageSummary2}, io_toc::{
+        AssetCollector, TocDirectorySyncRef, TocFile, SUITABLE_FILE_EXTENSIONS, 
+    }, 
+    alignment::{AlignableNum, AlignableStream}, 
+    io_toc::{
         ContainerHeader, IoChunkId, IoChunkType4, IoDirectoryIndexEntry, IoFileIndexEntry, IoOffsetAndLength, IoStoreTocCompressedBlockEntry, IoStoreTocEntryMeta, IoStoreTocHeaderCommon, IoStoreTocHeaderType3, IoStringPool, IO_FILE_INDEX_ENTRY_SERIALIZED_SIZE
-    }, metadata::{UtocMetadata, UTOC_METADATA}, string::{FString32NoHash, FStringSerializer, FStringSerializerExpectedLength, Hasher16, Hasher8}
+    }, 
+    string::{FString32NoHash, FStringSerializer, FStringSerializerExpectedLength, Hasher16}
 };
 
 pub const DEFAULT_COMPRESSION_BLOCK_ALIGNMENT: u32 = 0x10;
@@ -216,7 +219,7 @@ impl TocFactory {
         let mount_point = "../../../";
 
         // CAS STUFF
-        let mut container_header = ContainerHeader::new(toc_name_hash);
+        let container_header = ContainerHeader::new(toc_name_hash);
         let mut compression_blocks = vec![];
         let mut offsets_and_lengths = vec![];
         let mut metas = vec![];
@@ -325,19 +328,6 @@ impl TocFactory {
 
 pub struct TocBuilderProfiler {
     // All file sizes are in bytes
-    successful_files: u64,
-    successful_files_size: u64,
-    incorrect_asset_format: Vec<String>, // list of offending files, print out to console
-    incorrect_asset_format_size: u64,
-    failed_to_read: Vec<String>,
-    failed_to_read_size: u64,
-    container_header_hash: u64,
-    compression_block_count: u64,
-    mount_point: String,
-    directory_index_size: u64,
-    file_index_size: u64,
-    string_index_size: u64,
-    generated_meta_hashes: bool,
     start_time: Instant,
     time_to_flatten: u128,
     time_to_serialize: u128
@@ -346,19 +336,6 @@ pub struct TocBuilderProfiler {
 impl TocBuilderProfiler {
     pub fn new() -> Self {
         Self {
-            successful_files: 0,
-            successful_files_size: 0,
-            incorrect_asset_format: vec![],
-            incorrect_asset_format_size: 0,
-            failed_to_read: vec![],
-            failed_to_read_size: 0,
-            container_header_hash: 0,
-            compression_block_count: 0,
-            mount_point: String::new(),
-            directory_index_size: 0,
-            file_index_size: 0,
-            string_index_size: 0,
-            generated_meta_hashes: false,
             start_time: Instant::now(),
             time_to_flatten: 0,
             time_to_serialize: 0
