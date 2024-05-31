@@ -144,29 +144,15 @@ pub struct TocFactory {
     source_folder: String,
     max_compression_block_size: u32,
     compression_block_alignment: u32,
-    //toc_name_hash: u64,
-    // chunk_ids: Vec<IoChunkId>,
-    // offsets_and_lengths: Vec<IoOffsetAndLength>,
-    // compression_blocks: Vec<IoStoreTocCompressedBlockEntry>,
-    // metas: Vec<IoStoreTocEntryMeta>,
-    // cas_pointer: u64, // Current virtual position of container file
-
-
 }
 
 impl TocFactory {
-    pub fn new(source_folder: &str) -> Self {
+    pub fn new(source_folder: String) -> Self {
         Self { 
-            source_folder: source_folder.to_string(),
+            source_folder,
             // Directory block
             max_compression_block_size: 0x40000, // default for UE 4.26/4.27 is 0x10000 - used for offset + length offset
             compression_block_alignment: DEFAULT_COMPRESSION_BLOCK_ALIGNMENT, // 0x800 is default for UE 4.27
-            //toc_name_hash: Hasher16::get_cityhash64(GAME_ROOT), // used for container id (is also the last file in partition) (verified)
-            // chunk_ids: vec![],
-            // offsets_and_lengths: vec![],
-            // compression_blocks: vec![],
-            // metas: vec![],
-            // cas_pointer: 0
         }
     }
 

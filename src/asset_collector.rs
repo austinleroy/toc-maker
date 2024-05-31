@@ -33,7 +33,7 @@ impl AssetCollector
                 profiler,
             })
         } else {
-            Err("AssetCollector->from_folder: Path does not exist")
+            Err("Input path does not exist")
         }
     }
 
