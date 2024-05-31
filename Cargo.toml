@@ -9,8 +9,9 @@ edition = "2021"
 byteorder = "1"
 cityhasher = "0.1"
 num = "0.4.3"
-sha1 = "0.10"
+sha1 = { version = "0.10", optional = true }
 flate2 = { version = "1.0.17", features = ["zlib-ng"], default-features = false, optional = true }
 
 [features]
 zlib = [ "dep:flate2" ]
+hash_meta = [ "dep:sha1" ]

@@ -28,9 +28,11 @@ fn main() {
 fn execute(config: Config) -> Result<(), Box<dyn Error>> {
     #[allow(unused_mut)]
     let mut factory = TocFactory::new(config.inpath);
-    #[cfg(feature = "zlib")]
     if config.use_zlib {
         factory.use_zlib_compression();
+    }
+    if config.hash_metadata {
+        factory.include_metadata_hashes();
     }
     let mut utoc_stream = File::create(config.outpath.clone() + ".utoc")?;
     let mut ucas_stream = File::create(config.outpath.clone() + ".ucas")?;

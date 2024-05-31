@@ -1,6 +1,6 @@
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use crate::string::{FString32NoHash, FStringSerializer, Hasher16};
-//#[cfg(feature = "hash_meta")]
+#[cfg(feature = "hash_meta")]
 use sha1::{Sha1, Digest};
 use std::{
     error::Error,
@@ -469,7 +469,7 @@ impl IoStoreTocEntryMeta {
     // Used for situations where it's required to generate a new TOC. This requires reading the entire contents of every file and creating a SHA1
     // hash for it, which is a very slow operation. If this is *required* for any game, a cache will be created to store previously calculated hashes
     // (I tested this on a blank UE project and had a serialization time of about 130 ms for 1 file)
-    //#[cfg(feature = "hash_meta")]
+    #[cfg(feature = "hash_meta")]
     pub fn new_with_hash<R: std::io::Read>(mut source: &mut R) -> Self {
         let mut hasher = Sha1::new();
         std::io::copy(&mut source, &mut hasher);

@@ -143,6 +143,7 @@ impl TocFlattener {
 pub struct TocFactory {
     source_folder: String,
     use_zlib: bool,
+    hash_meta: bool,
     max_compression_block_size: u32,
     compression_block_alignment: u32,
 }
@@ -152,15 +153,18 @@ impl TocFactory {
         Self { 
             source_folder,
             use_zlib: false,
-            // Directory block
+            hash_meta: false,
             max_compression_block_size: 0x40000, // default for UE 4.26/4.27 is 0x10000 - used for offset + length offset
             compression_block_alignment: DEFAULT_COMPRESSION_BLOCK_ALIGNMENT, // 0x800 is default for UE 4.27
         }
     }
 
-    #[cfg(feature = "zlib")]
     pub fn use_zlib_compression(&mut self) {
         self.use_zlib = true;
+    }
+
+    pub fn include_metadata_hashes(&mut self) {
+        self.hash_meta = true;
     }
 
     pub fn write_files<WTOC: Write, WCAS: AlignableStream>(self, mut utoc_stream: &mut WTOC, mut ucas_stream: &mut WCAS) -> Result<(), &'static str> {
@@ -174,39 +178,6 @@ impl TocFactory {
             names
         ) = TocFlattener::flatten(asset_collector.get_toc_tree());
         profiler.set_flatten_time();
-
-        //TODO move mount point and set toc_name_hash
-        //TODO also remove meta hashes?  Since they don't seem to be needed
-
-        // This sorting seemed close to how files were sorted in my test case... useful for file comparisons
-        // files.sort_by(|a,b| {
-        //     let apar: String = a.os_path.split('/').rev().skip(1).collect();
-        //     let bpar: String = b.os_path.split('/').rev().skip(1).collect();
-        //     let pord = apar.cmp(&bpar);
-        //     if a.os_path.ends_with(".ubulk") {
-        //         if b.os_path.ends_with(".ubulk") {
-        //             if matches!(pord, Ordering::Equal) {
-        //                 a.file_size.cmp(&b.file_size)
-        //             } else {
-        //                 pord
-        //             }
-        //         } else {
-        //             Ordering::Greater
-        //         }
-        //     } else if b.os_path.ends_with(".ubulk") {
-        //         Ordering::Less
-        //     } else {
-        //         if matches!(pord, Ordering::Equal) {
-        //             a.file_size.cmp(&b.file_size)
-        //         } else {
-        //             pord
-        //         }
-        //     }
-        // });
-        // for i in 0..files.len() {
-        //     files[i].user_data = i as u32;
-        // }
-
 
         let toc_name_hash = Hasher16::get_cityhash64("pakchunk999"); // This can be anything - in UE4.27, this is the pakchunk number, e.g. pakchunk120
         let mount_point = "../../../";
@@ -242,8 +213,12 @@ impl TocFactory {
             //     ));
             // }
 
-            metas.push(IoStoreTocEntryMeta::new_empty()); // Empty meta seems to work okay
-            //metas.push(IoStoreTocEntryMeta::new_with_hash(&mut File::open(Path::new(&file.os_path)).unwrap())); // Generate meta - SHA1 hash of the file's contents (doesn't seem to be required)
+            if self.hash_meta {
+                #[cfg(feature = "hash_meta")]
+                metas.push(IoStoreTocEntryMeta::new_with_hash(&mut File::open(std::path::Path::new(&file.os_path)).unwrap())); // Generate meta - SHA1 hash of the file's contents (doesn't seem to be required)
+            } else {
+                metas.push(IoStoreTocEntryMeta::new_empty()); // Empty meta seems to work okay
+            }
         }
 
         //Container header is last thing to write to file
@@ -253,10 +228,12 @@ impl TocFactory {
         ucas_stream.write(&container_header);
         compression_blocks.push(IoStoreTocCompressedBlockEntry::new(compressed_offset, container_header.len() as u32, container_header.len() as u32, 0));
 
-        metas.push(IoStoreTocEntryMeta::new_empty()); // Empty meta seems to work okay
-        //metas.push(IoStoreTocEntryMeta::new_with_hash(&mut Cursor::new(container_header))); // Generate meta - SHA1 hash of the file's contents (doesn't seem to be required)
-
-
+        if self.hash_meta {
+            #[cfg(feature = "hash_meta")]
+            metas.push(IoStoreTocEntryMeta::new_with_hash(&mut std::io::Cursor::new(container_header))); // Generate meta - SHA1 hash of the file's contents (doesn't seem to be required)
+        } else {
+            metas.push(IoStoreTocEntryMeta::new_empty()); // Empty meta seems to work okay
+        }
 
         // TOC STUFF
         // Get DirectoryIndexSize = mount point + Directory Entries + File Entries + Strings

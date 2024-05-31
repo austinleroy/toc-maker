@@ -1,8 +1,8 @@
 pub struct Config {
     pub inpath: String,
     pub outpath: String,
-    #[cfg(feature = "zlib")]
     pub use_zlib: bool,
+    pub hash_metadata: bool,
 }
 
 impl Config {
@@ -11,8 +11,10 @@ impl Config {
 
         let mut inpath = None;
         let mut outpath = None;
-        #[cfg(feature = "zlib")]
+        #[allow(unused_mut)]
         let mut use_zlib = false;
+        #[allow(unused_mut)]
+        let mut hash_metadata = false;
         
         while let Some(arg) = args.next() {
             if !arg.starts_with('-') {
@@ -30,6 +32,16 @@ impl Config {
                     continue;
                 }
 
+                #[cfg(feature = "hash_meta")]
+                if arg == "-m" || arg == "--meta" {
+                    hash_metadata = true;
+                    continue;
+                }
+
+                if arg == "-h" || arg == "--help" {
+                    return Err(String::new());
+                }
+
                 return Err(format!("Unexpected argument: {arg}"));
             }
         }
@@ -37,26 +49,36 @@ impl Config {
         Ok(Self {
             inpath: inpath.ok_or("Must specify input path")?,
             outpath: outpath.ok_or("Must specify output path")?,
-            #[cfg(feature = "zlib")]
             use_zlib,
+            hash_metadata,
         })
     }
 
     pub fn usage() -> &'static str {
         r#"
 
-Creates a utoc, ucas, and pak file using files in the input directory.  Developed and tested
-for UE4.27 (no guarantees on other verions).
+Creates a utoc, ucas, and pak file using files in the input directory. Built
+and tested using UE4.27 (no guarantees on other verions).
 
-Usage:     toc-maker <input path> <output path>
+Usage:     toc-maker [options] <input path> <output path>
 
-    <input path>    Path to folder containing files that should be packaged into the IoStore
-                    output. Directory structure matters - this folder will be considered the
-                    root of the output package.
+    <input path>    Path to folder containing files that should be packaged 
+                    into the IoStore output. Directory structure matters - this
+                    folder will be considered the root of the output package.
 
-    <output path>   Path to the desired output.  Output will be used as the file stem for
-                    newly created .utoc, .ucas, and .pak files.
+    <output path>   Path to the desired output. Output will be used as the file
+                    stem for newly created .utoc, .ucas, and .pak files.
 
+    Options:
+
+      -h, --help    Show this help and exit.
+
+      -z, --zlib    Compress output data using zlib. Can substantially reduce 
+                    package size when including textures/models.
+
+      -m, --meta    Hash file contents and include in toc meta. Doesn't seem to
+                    be verified, but may help if you have issues loading 
+                    content. ***INCREASES EXECUTION TIME***
 
         "#
     }
