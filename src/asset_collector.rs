@@ -244,7 +244,7 @@ impl AssetCollectorProfiler {
 
     pub fn print(&self) {
         println!("{}", "#".repeat(AssetCollectorProfiler::get_terminal_length()));
-        println!("{}", self.os_path);
+        println!("Collecting assets from: {}", self.os_path);
         println!("{}", "=".repeat(AssetCollectorProfiler::get_terminal_length()));
         println!("{} directories added", self.directory_count);
         println!("{} added files ({} KB)", self.added_files_count, self.added_files_size / 1024);

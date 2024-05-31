@@ -6,15 +6,15 @@ use std::{
     time::Instant
 };
 
+#[cfg(feature = "zlib")]
+use flate2::{write::ZlibEncoder, Compression};
+
 use crate::{
-    asset_collector::{
+    alignment::{AlignableNum, AlignableStream}, asset_collector::{
         AssetCollector, TocDirectorySyncRef, TocFile, SUITABLE_FILE_EXTENSIONS, 
-    }, 
-    alignment::{AlignableNum, AlignableStream}, 
-    io_toc::{
-        ContainerHeader, IoChunkId, IoChunkType4, IoDirectoryIndexEntry, IoFileIndexEntry, IoOffsetAndLength, IoStoreTocCompressedBlockEntry, IoStoreTocEntryMeta, IoStoreTocHeaderCommon, IoStoreTocHeaderType3, IoStringPool, IO_FILE_INDEX_ENTRY_SERIALIZED_SIZE
-    }, 
-    string::{FString32NoHash, FStringSerializer, FStringSerializerExpectedLength, Hasher16}
+    }, io_toc::{
+        ContainerHeader, IoChunkId, IoChunkType4, IoDirectoryIndexEntry, IoFileIndexEntry, IoOffsetAndLength, IoStoreTocCompressedBlockEntry, IoStoreTocEntryMeta, IoStoreTocHeaderCommon, IoStoreTocHeaderType3, IoStringPool, COMPRESSION_METHOD_NAME_LENGTH, IO_FILE_INDEX_ENTRY_SERIALIZED_SIZE
+    }, string::{FString32NoHash, FStringSerializer, FStringSerializerExpectedLength, Hasher16}
 };
 
 pub const DEFAULT_COMPRESSION_BLOCK_ALIGNMENT: u32 = 0x10;
@@ -142,6 +142,7 @@ impl TocFlattener {
 
 pub struct TocFactory {
     source_folder: String,
+    use_zlib: bool,
     max_compression_block_size: u32,
     compression_block_alignment: u32,
 }
@@ -150,10 +151,16 @@ impl TocFactory {
     pub fn new(source_folder: String) -> Self {
         Self { 
             source_folder,
+            use_zlib: false,
             // Directory block
             max_compression_block_size: 0x40000, // default for UE 4.26/4.27 is 0x10000 - used for offset + length offset
             compression_block_alignment: DEFAULT_COMPRESSION_BLOCK_ALIGNMENT, // 0x800 is default for UE 4.27
         }
+    }
+
+    #[cfg(feature = "zlib")]
+    pub fn use_zlib_compression(&mut self) {
+        self.use_zlib = true;
     }
 
     pub fn write_files<WTOC: Write, WCAS: AlignableStream>(self, mut utoc_stream: &mut WTOC, mut ucas_stream: &mut WCAS) -> Result<(), &'static str> {
@@ -244,7 +251,7 @@ impl TocFactory {
         offsets_and_lengths.push(IoOffsetAndLength::new(uncompressed_offset.align_to(self.max_compression_block_size), container_header.len() as u64));
         ucas_stream.align_to(&mut compressed_offset, self.max_compression_block_size);
         ucas_stream.write(&container_header);
-        compression_blocks.push(IoStoreTocCompressedBlockEntry::new(compressed_offset, container_header.len() as u32, container_header.len() as u32));
+        compression_blocks.push(IoStoreTocCompressedBlockEntry::new(compressed_offset, container_header.len() as u32, container_header.len() as u32, 0));
 
         metas.push(IoStoreTocEntryMeta::new_empty()); // Empty meta seems to work okay
         //metas.push(IoStoreTocEntryMeta::new_with_hash(&mut Cursor::new(container_header))); // Generate meta - SHA1 hash of the file's contents (doesn't seem to be required)
@@ -265,6 +272,7 @@ impl TocFactory {
             toc_name_hash, 
             files.len() as u32 + 1, // + 1 for container header
             compression_blocks.len() as u32,
+            if self.use_zlib { 1 } else { 0 },
             self.max_compression_block_size,
             directory_index_size
         );
@@ -273,6 +281,11 @@ impl TocFactory {
         IoChunkId::list_to_buffer::                     <WTOC, EN>(&files.iter().map(|f| f.chunk_id).chain([IoChunkId::new_from_hash(toc_name_hash, IoChunkType4::ContainerHeader)]).collect(), &mut utoc_stream).unwrap(); // FIoChunkId
         IoOffsetAndLength::list_to_buffer::             <WTOC, EN>(&offsets_and_lengths, &mut utoc_stream).unwrap(); // FIoOffsetAndLength
         IoStoreTocCompressedBlockEntry::list_to_buffer::<WTOC, EN>(&compression_blocks, &mut utoc_stream).unwrap(); // FIoStoreTocCompressedBlockEntry
+        if self.use_zlib {
+            let mut compression_names = [0u8; COMPRESSION_METHOD_NAME_LENGTH as usize];
+            compression_names[..4].copy_from_slice(b"zlib");
+            utoc_stream.write(&compression_names).unwrap();
+        }
         // compression methods go here if we want to do any compressing
         FString32NoHash::to_buffer::                    <WTOC, EN>(mount_point, &mut utoc_stream).unwrap(); // Mount Point
         IoDirectoryIndexEntry::list_to_buffer::         <WTOC, EN>(&directories, &mut utoc_stream).unwrap(); // FIoDirectoryIndexEntry
@@ -289,20 +302,29 @@ impl TocFactory {
     fn write_compressed_file<W: AlignableStream>(&self, file: &IoFileIndexEntry, offset: &mut u64, destination: &mut W) -> Vec<IoStoreTocCompressedBlockEntry> {
         let compression_block_count = (file.file_size / self.max_compression_block_size as u64) + 1; // need at least 1 compression block
         let mut gen_blocks = Vec::with_capacity(compression_block_count as usize);
+        let compression_method = if self.use_zlib { 1 } else { 0 };
 
         let mut reader = File::open(&file.os_path).unwrap();
         let mut data = vec![0u8; self.max_compression_block_size as usize];
         while let Ok(len) = reader.read(&mut data) {
             if len == 0 { break }
 
-            //TODO allow compressing data?
-            // data = file.compression_func(data)
-            // compressed_len = compressed_len
-            let compressed_len = len;
+            #[allow(unused_mut)]
+            let mut compressed_len = len;
+
+            #[cfg(feature = "zlib")]
+            if self.use_zlib {
+                let mut e = ZlibEncoder::new(Vec::with_capacity(self.max_compression_block_size as usize), Compression::default());
+                e.write_all(&data[..len]).unwrap();
+                let compressed_bytes = e.finish().unwrap();
+
+                compressed_len = compressed_bytes.len();
+                data[..compressed_len].copy_from_slice(&compressed_bytes);
+            }
 
             destination.align_to(offset, self.compression_block_alignment);
-            gen_blocks.push(IoStoreTocCompressedBlockEntry::new(*offset, len as u32, compressed_len as u32));
-            *offset += destination.write(&data[..len]).unwrap() as u64;
+            gen_blocks.push(IoStoreTocCompressedBlockEntry::new(*offset, compressed_len as u32, len as u32, compression_method));
+            *offset += destination.write(&data[..compressed_len]).unwrap() as u64;
         }
 
         gen_blocks

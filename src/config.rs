@@ -1,6 +1,8 @@
 pub struct Config {
     pub inpath: String,
     pub outpath: String,
+    #[cfg(feature = "zlib")]
+    pub use_zlib: bool,
 }
 
 impl Config {
@@ -9,6 +11,8 @@ impl Config {
 
         let mut inpath = None;
         let mut outpath = None;
+        #[cfg(feature = "zlib")]
+        let mut use_zlib = false;
         
         while let Some(arg) = args.next() {
             if !arg.starts_with('-') {
@@ -20,6 +24,12 @@ impl Config {
                     return Err(format!("Unexpected argument: {arg}"));
                 }
             } else {
+                #[cfg(feature = "zlib")]
+                if arg == "-z" || arg == "--zlib" {
+                    use_zlib = true;
+                    continue;
+                }
+
                 return Err(format!("Unexpected argument: {arg}"));
             }
         }
@@ -27,6 +37,8 @@ impl Config {
         Ok(Self {
             inpath: inpath.ok_or("Must specify input path")?,
             outpath: outpath.ok_or("Must specify output path")?,
+            #[cfg(feature = "zlib")]
+            use_zlib,
         })
     }
 

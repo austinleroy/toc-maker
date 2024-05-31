@@ -64,9 +64,10 @@ pub mod io_container_flags {
 // IO STORE HEADER
 
 pub const IO_STORE_TOC_MAGIC: [u8; 0x10] = *b"-==--==--==--==-";
+pub const COMPRESSION_METHOD_NAME_LENGTH: u32 = 32;
 
 pub trait IoStoreTocHeaderCommon {
-    fn new(container_id: u64, entries: u32, compressed_blocks: u32, compression_block_size: u32, dir_index_size: u32) -> impl IoStoreTocHeaderCommon;
+    fn new(container_id: u64, entries: u32, compressed_blocks: u32, compression_method_name_count: u32, compression_block_size: u32, dir_index_size: u32) -> impl IoStoreTocHeaderCommon;
     fn to_buffer<W: Write, E: byteorder::ByteOrder>(&self, writer: &mut W) -> Result<(), Box<dyn Error>>;
 }
 
@@ -91,7 +92,7 @@ pub struct IoStoreTocHeaderType3 { // Unreal Engine 4.27
 }
 
 impl IoStoreTocHeaderCommon for IoStoreTocHeaderType3 {
-    fn new(container_id: u64, entries: u32, compressed_blocks: u32, compression_block_size: u32, dir_index_size: u32) -> impl IoStoreTocHeaderCommon {
+    fn new(container_id: u64, entries: u32, compressed_blocks: u32, compression_method_name_count: u32, compression_block_size: u32, dir_index_size: u32) -> impl IoStoreTocHeaderCommon {
         Self {
             toc_magic: IO_STORE_TOC_MAGIC,
             version: IoStoreTocVersion::PartitionSize,
@@ -99,8 +100,8 @@ impl IoStoreTocHeaderCommon for IoStoreTocHeaderType3 {
             toc_entry_count: entries,
             toc_compressed_block_entry_count: compressed_blocks,
             toc_compressed_block_entry_size: std::mem::size_of::<IoStoreTocCompressedBlockEntry>() as u32, // for sanity checking
-            compression_method_name_count: 0,
-            compression_method_name_length: 32,
+            compression_method_name_count,
+            compression_method_name_length: COMPRESSION_METHOD_NAME_LENGTH,
             compression_block_size,
             directory_index_size: dir_index_size,
             partition_count: 1,
@@ -341,7 +342,7 @@ pub struct IoStoreTocCompressedBlockEntry {
 }
 
 impl IoStoreTocCompressedBlockEntry {
-    pub fn new(offset: u64, length: u32, uncompressed_length: u32) -> Self {
+    pub fn new(offset: u64, length: u32, uncompressed_length: u32, compression_method: u8) -> Self {
         type ByteBlock = Cursor<[u8; 0xc]>;
         type E = byteorder::NativeEndian;
         let mut byte_builder = Cursor::new([0; 0xc]);
@@ -351,6 +352,7 @@ impl IoStoreTocCompressedBlockEntry {
         byte_builder.write_all(cmp_size).unwrap(); // cmp_size
         let decmp_size = &uncompressed_length.to_ne_bytes()[0..3];
         byte_builder.write_all(decmp_size).unwrap(); // decmp_size
+        byte_builder.write_u8(compression_method).unwrap();
         Self { data: byte_builder.into_inner() }
     }
     pub fn to_buffer<W: Write, E: byteorder::ByteOrder>(&self, writer: &mut W) -> Result<(), Box<dyn Error>> {
